@@ -13,8 +13,8 @@ package user_pkg;
   // User Manager //
   //////////////////
 
-  // None
-
+  // we do have a single user manager
+  localparam int unsigned NumMuxMgr = 1;
 
   ///////////////////////
   // User Subordinates //

@@ -32,8 +32,46 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
   // User Manager MUX //
   /////////////////////
 
-  // No manager so we don't need a obi_mux module and just terminate the request properly
-  assign user_mgr_obi_req_o = '0;
+  /*
+  // all manager signals
+  mgr_obi_req_t [NumMuxMgr-1:0] all_user_mgr_obi_req;
+  mgr_obi_rsp_t [NumMuxMgr-1:0] all_user_mgr_obi_rsp;
+
+  // signal to the main module
+  mgr_obi_req_t user_main_mgr_obi_req;
+  mgr_obi_rsp_t user_main_mgr_obi_rsp;
+
+  // assign signals
+  // if adding more might make sense to introduce an enum as demux
+  assign user_main_mgr_obi_rsp    = all_user_mgr_obi_rsp[0];
+  assign all_user_mgr_obi_req[0]  = user_main_mgr_obi_req;
+
+  // technically not needed, we only have one manager
+  // but its extendable!!
+  obi_mux #(
+    .SbrPortObiCfg      ( SbrObiCfg ),
+    .MgrPortObiCfg      ( MgrObiCfg ),
+    .sbr_port_obi_req_t ( sbr_obi_req_t ),
+    .sbr_port_a_chan_t  ( sbr_obi_a_chan_t ),
+    .sbr_port_obi_rsp_t ( sbr_obi_rsp_t ),
+    .sbr_port_r_chan_t  ( sbr_obi_r_chan_t ),
+    .mgr_port_obi_req_t ( mgr_obi_req_t ),
+    .mgr_port_obi_rsp_t ( mgr_obi_rsp_t ),
+    .NumSbrPorts        ( NumMuxMgr ),
+    .NumMaxTrans        ( 2 ),
+    .UseIdForRouting    ( 1'b0 )
+  ) i_obi_mux (
+    .clk_i              ( clk_i ),
+    .rst_ni             ( rst_ni ),
+    .testmode_i         ( testmode_i ),
+
+    .sbr_ports_req_i    ( all_user_mgr_obi_req ),
+    .sbr_ports_rsp_o    ( all_user_mgr_obi_rsp ),
+
+    .mgr_port_req_o     ( user_mgr_obi_req_o ),
+    .mgr_port_rsp_i     ( user_mgr_obi_rsp_i )
+  );
+  */
 
 
   ////////////////////////////
@@ -112,14 +150,19 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
   // Replace this with your Design //
   ///////////////////////////////////
   user_test #(
-    .ObiCfg     ( SbrObiCfg ),
-    .obi_req_t   ( sbr_obi_req_t ),
-    .obi_rsp_t   ( sbr_obi_rsp_t )
+    .SbrObiCfg       ( SbrObiCfg ),
+    .sbr_obi_req_t   ( sbr_obi_req_t ),
+    .sbr_obi_rsp_t   ( sbr_obi_rsp_t ),
+    .MgrObiCfg       ( MgrObiCfg ),
+    .mgr_obi_req_t   ( mgr_obi_req_t ),
+    .mgr_obi_rsp_t   ( mgr_obi_rsp_t )
   ) i_user_test (
     .clk_i,
     .rst_ni,
-    .obi_req_i  ( user_design_obi_req ),
-    .obi_rsp_o  ( user_design_obi_rsp ),
+    .obi_sbr_req_i  ( user_design_obi_req ),
+    .obi_sbr_rsp_o  ( user_design_obi_rsp ),
+    .obi_mgr_req_o  ( user_mgr_obi_req_o ),
+    .obi_mgr_rsp_i  ( user_mgr_obi_rsp_i ),
     .interrupt_o( interrupts_o[0] )
   );
 
