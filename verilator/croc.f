@@ -175,9 +175,10 @@
 ../rtl/gpio/gpio.sv
 ../rtl/clint/clint.sv
 ../rtl/obi_timer/obi_timer.sv
+../rtl/fmac/fmac_pkg.sv
 ../rtl/croc_domain.sv
 ../rtl/user_domain.sv
-../rtl/user_domain/user_test.sv
+../rtl/user_domain/user_rom.sv
 ../rtl/croc_soc.sv
 ../rtl/croc_chip.sv
 ../rtl/test/tb_croc_pkg.sv
