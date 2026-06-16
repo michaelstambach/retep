@@ -26,21 +26,15 @@ package user_pkg;
   /// Enum with user domain demultiplexer subordinate idxs
   typedef enum bit [4:0]  {
     UserError  = 0,
-    UserRom = 1,
-    UserFmac = 2
+    UserDesign = 1
   } user_demux_outputs_e;
 
   /// Address rules given to user domain demultiplexer (see croc_pkg.sv for examples)
-  localparam croc_pkg::addr_map_rule_t [1:0] UserAddrMap = '{
+  localparam croc_pkg::addr_map_rule_t [0:0] UserAddrMap = '{
     '{
-      idx:        UserRom,
+      idx:        UserDesign,
       start_addr: croc_pkg::UserBaseAddr,
-      end_addr:   croc_pkg::UserBaseAddr + 32'h0000_1000
-    },
-    '{
-      idx:        UserFmac,
-      start_addr: croc_pkg::UserBaseAddr + 32'h0000_1000,
-      end_addr:   croc_pkg::UserBaseAddr + 32'h0000_2000
+      end_addr:   croc_pkg::UserBaseAddr + 32'h1000_0000
     }
   };
   // All addresses outside the defined address rules go to the error subordinate
