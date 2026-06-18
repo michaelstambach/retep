@@ -10,7 +10,7 @@ module fmac_calc (
 
     input logic sum_i,
     input logic ready_i,
-    input logic clear_i
+    input logic clear_i,
 
     output logic [31:0] data_o
 );
@@ -33,7 +33,7 @@ assign data_to_sum = ready_i ? data_mul_sum : 32'b0;
 assign data_new = data_q + data_to_sum;
 
 // clear data
-assign data_d = clear ? 32'b0 : data_new;
+assign data_d = clear_i ? 32'b0 : data_new;
 
 // output data
 assign data_o = data_q;

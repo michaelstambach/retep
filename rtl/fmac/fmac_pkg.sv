@@ -74,14 +74,18 @@ logic [31:0] calc_out;
 
 // interrupt
 logic interrupt_d, interrupt_q;
+logic irq_clear;
 
 // current index into the input data
 logic [31:0] index_d, index_q;
 
+// flag for outstanding final dma transaction
+logic dma_pending_d, dma_pending_q;
+
 // circular intermediate data buffer and r/w pointers
 logic [127:0] buf_data_d, buf_data_q;
-logic [2:0] buf_ri_d, buf_ri_q;
-logic [2:0] buf_wi_d, buf_wi_q;
+logic [1:0] buf_ri_d, buf_ri_q;
+logic [1:0] buf_wi_d, buf_wi_q;
 logic buf_w_src_d, buf_w_src_q;
 
 // signals to fmac_calc
@@ -89,6 +93,23 @@ logic [31:0] calc_data;
 logic calc_sum;
 logic calc_ready_d, calc_ready_q;
 logic calc_clear;
+
+
+// Submodules
+// ==========
+
+// fmac_calc
+fmac_calc i_fmac_calc(
+    .clk_i,
+    .rst_ni,
+
+    .data_i     (calc_data),
+    .sum_i      (calc_sum),
+    .ready_i    (calc_ready_q),
+    .clear_i    (calc_clear),
+
+    .data_o     (calc_out)
+);
 
 
 // Flip-Flops
@@ -109,6 +130,8 @@ logic calc_clear;
 `FF(interrupt_q, interrupt_d, '0);
 
 `FF(index_q, index_d, '0);
+
+`FF(dma_pending_q, dma_pending_d, '0);
 
 `FF(buf_data_q, buf_data_d, '0);
 `FF(buf_ri_q, buf_ri_d, '0);
@@ -139,7 +162,7 @@ assign mgr_err = obi_mgr_rsp_i.r.err;
 
 // fmac_calc input wiring
 // pass the data to the calc module according to the current read index
-assign calc_data = buf_data_q[{buf_ri_q[1:0], 5'b0}+:32];
+assign calc_data = buf_data_q[{buf_ri_q, 5'b0}+:32];
 assign calc_sum = (src_b_q == 32'b0);
 
 // dma read address
@@ -155,6 +178,9 @@ assign mgr_addr = calc_sum ? src_a_q + (index_q<<2) :
 always_comb begin
     state_d = state_q;
     index_d = index_q;
+    dma_pending_d = dma_pending_q;
+    interrupt_d = interrupt_q;
+    calc_clear = '0;
 
     // obi manager
     mgr_req_d = mgr_req_q;
@@ -171,25 +197,36 @@ always_comb begin
                     // done
                     mgr_req_d = '0;
                 end
+                // set flag that a transaction is still pending
+                dma_pending_d = '1;
+            end
+
+            // check if final transaction has arrived
+            if (~mgr_req_q && mgr_rvalid) begin
+                dma_pending_d = '0;
             end
 
 
             // conversion complete
-            // index at end, buffer processed and not waiting for other half of data
-            if (index_q == len_q && (buf_wi_q - buf_ri_q) == 32'b1 && ~buf_w_src_q) begin
-                // todo: send interrupt
+            // index at end, nothing pending and buffer processed
+            if (index_q == len_q && ~dma_pending_q && (buf_wi_q - buf_ri_q) == 2'b1) begin
                 state_d = Stop;
+                interrupt_d = '1;
             end
         end
         default: begin
             if (state_req == Run) begin
-                // todo: reset stuff here + send first dma req?
                 index_d = '0;
                 mgr_req_d = '1;
+                calc_clear = '1;
                 state_d = Run;
             end else begin
                 // ensure no dma transactions are triggered when stopped
                 mgr_req_d = '0;
+            end
+            // clear interrupt whenever requested
+            if (irq_clear) begin
+                interrupt_d ='0;
             end
         end
     endcase
@@ -210,6 +247,9 @@ always_comb begin
     src_b_d = src_b_q;
     len_d   = len_q;
 
+    // do not clear irq unless requested
+    irq_clear = '0;
+
     // incoming request
     if (sbr_req_q) begin
         case(word_addr)
@@ -220,7 +260,9 @@ always_comb begin
                     // any value but zero sets state to Run
                     state_req = Run;
                 end else begin
+                    // stop also clears the interrupt
                     state_req = Stop;
+                    irq_clear = '1;
                 end
             end else begin
                 sbr_rsp_data = state_q;
@@ -276,7 +318,7 @@ always_comb begin
     buf_w_src_d = buf_w_src_q; // 0 = read from src a, 1 = src b
     buf_data_d = buf_data_q;
 
-    buf_wi_bits = {buf_wi_q[1:0], 5'b0};
+    buf_wi_bits = {buf_wi_q, 5'b0};
 
     if (mgr_rvalid) begin
         if (calc_sum) begin
@@ -291,7 +333,7 @@ always_comb begin
                 buf_data_d[buf_wi_bits+7'd48+:16] = mgr_rdata[31:16];
                 // only advance write index once both halves appeared
                 // but advance it by 2
-                buf_wi_d = buf_wi_q + 3'b10;
+                buf_wi_d = buf_wi_q + 2'b10;
             end
             buf_w_src_d = ~buf_w_src_q;
         end
@@ -299,7 +341,7 @@ always_comb begin
 
     // when stopped, reset write index
     if (state_q == Stop) begin
-        buf_wi_d = 3'b000;
+        buf_wi_d = 2'b00;
         buf_w_src_d = '0;
     end
 end
@@ -311,15 +353,15 @@ always_comb begin
     buf_ri_d = buf_ri_q;
     calc_ready_d = '0;
 
-    if ((buf_ri_q + 3'b1) < buf_wi_q) begin
-        buf_ri_d = buf_ri_q + 3'b1;
+    if ((buf_wi_q - buf_ri_q) > 2'b1) begin
+        buf_ri_d = buf_ri_q + 2'b1;
         calc_ready_d = '1;
     end
 
     if (state_q == Stop) begin
         // in the stopped state reset to the highest possible value
         // if we would start the read index at 0 we miss the first item
-        buf_ri_d = 3'b111;
+        buf_ri_d = 2'b11;
     end
 end
 
@@ -342,6 +384,9 @@ assign obi_mgr_req_o.a.be = 4'b1111;
 assign obi_mgr_req_o.a.wdata = '0;
 assign obi_mgr_req_o.a.aid = '0;
 assign obi_mgr_req_o.a.a_optional = '0;
+
+// Interrupt
+assign interrupt_o = interrupt_q;
 
 
 endmodule

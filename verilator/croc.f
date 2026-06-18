@@ -176,6 +176,7 @@
 ../rtl/clint/clint.sv
 ../rtl/obi_timer/obi_timer.sv
 ../rtl/fmac/fmac_pkg.sv
+../rtl/fmac/fmac_calc.sv
 ../rtl/croc_domain.sv
 ../rtl/user_domain.sv
 ../rtl/user_domain/user_rom.sv
