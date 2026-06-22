@@ -51,7 +51,7 @@ logic sbr_rsp_err;
 // OBI manager request (outgoing)
 // note that not all signals are used, OBI mgr is read only
 logic mgr_req_d, mgr_req_q;
-logic [MgrObiCfg.AddrWidth-1:0] mgr_addr;
+logic [MgrObiCfg.AddrWidth-1:0] mgr_addr_d, mgr_addr_q;
 //logic mgr_we_d, mgr_we_q;
 //logic [MgrObiCfg.DataWidth/8-1:0] mgr_be_d, mgr_be_q;
 //logic [MgrObiCfg.Datawidth-1:0] mgr_wdata_d, mgr_wdata_q;
@@ -64,7 +64,7 @@ logic mgr_err;
 
 // writable control registers
 state_t state_d, state_q;
-state_t state_req; // external request to change state
+state_t state_req_d, state_req_q; // external request to change state
 logic [31:0] src_a_d, src_a_q;
 logic [31:0] src_b_d, src_b_q;
 logic [31:0] len_d, len_q;
@@ -121,8 +121,10 @@ fmac_calc i_fmac_calc(
 `FF(sbr_wdata_q, sbr_wdata_d, '0);
 
 `FF(mgr_req_q, mgr_req_d, '0);
+`FF(mgr_addr_q, mgr_addr_d, '0);
 
 `FF(state_q, state_d, Stop);
+`FF(state_req_q, state_req_d, Stop);
 `FF(src_a_q, src_a_d, '0);
 `FF(src_b_q, src_b_d, '0);
 `FF(len_q, len_d, '0);
@@ -165,12 +167,6 @@ assign mgr_err = obi_mgr_rsp_i.r.err;
 assign calc_data = buf_data_q[{buf_ri_q, 5'b0}+:32];
 assign calc_sum = (src_b_q == 32'b0);
 
-// dma read address
-// this directly depends on the current index
-assign mgr_addr = calc_sum ? src_a_q + (index_q<<2) :
-                    ( index_q[0] ? src_b_q + (index_q<<1) : src_a_q + (index_q<<1) );
-
-
 // Logic
 // =====
 
@@ -184,6 +180,7 @@ always_comb begin
 
     // obi manager
     mgr_req_d = mgr_req_q;
+    mgr_addr_d = mgr_addr_q;
 
     case (state_q)
         Run: begin
@@ -192,6 +189,8 @@ always_comb begin
                 // prepare for next request
                 if (index_q < len_q) begin
                     index_d = index_q + 32'b1;
+                    mgr_addr_d = calc_sum ? mgr_addr_q + 32'd4 :
+                        ( index_q[0] ? src_a_q + (index_d<<1) : src_b_q + (index_d<<1) );
                     mgr_req_d = '1;
                 end else begin
                     // done
@@ -215,9 +214,10 @@ always_comb begin
             end
         end
         default: begin
-            if (state_req == Run) begin
+            if (state_req_q == Run) begin
                 index_d = '0;
                 mgr_req_d = '1;
+                mgr_addr_d = src_a_q;
                 calc_clear = '1;
                 state_d = Run;
             end else begin
@@ -242,10 +242,12 @@ always_comb begin
     word_addr = sbr_addr_q[5:2];
 
     // by default, retain control register values
-    state_req = state_q;
     src_a_d = src_a_q;
     src_b_d = src_b_q;
     len_d   = len_q;
+
+    // default is no start requested
+    state_req_d = Stop;
 
     // do not clear irq unless requested
     irq_clear = '0;
@@ -258,10 +260,9 @@ always_comb begin
             if (sbr_we_q) begin
                 if (sbr_wdata_q != '0) begin
                     // any value but zero sets state to Run
-                    state_req = Run;
+                    state_req_d = Run;
                 end else begin
-                    // stop also clears the interrupt
-                    state_req = Stop;
+                    // stop clears the interrupt
                     irq_clear = '1;
                 end
             end else begin
@@ -378,7 +379,7 @@ assign obi_sbr_rsp_o.r.r_optional = '0;
 
 // OBI manager request
 assign obi_mgr_req_o.req = mgr_req_q;
-assign obi_mgr_req_o.a.addr = mgr_addr;
+assign obi_mgr_req_o.a.addr = mgr_addr_q;
 assign obi_mgr_req_o.a.we = '0; // read only
 assign obi_mgr_req_o.a.be = 4'b1111;
 assign obi_mgr_req_o.a.wdata = '0;
